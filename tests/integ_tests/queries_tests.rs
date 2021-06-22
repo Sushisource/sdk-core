@@ -154,52 +154,12 @@ async fn queries_in_wf_task() {
     let workflow_completions_future = async {
         // Trigger the task timeout
         let task = core.poll_workflow_task(&task_q).await.unwrap();
+        dbg!(task);
         tokio::time::sleep(Duration::from_millis(1500)).await;
         let task = core.poll_workflow_task(&task_q).await.unwrap();
-        assert_matches!(
-            task.jobs.as_slice(),
-            [WfActivationJob {
-                variant: Some(wf_activation_job::Variant::FireTimer(_)),
-            }]
-        );
-        core.complete_workflow_task(WfActivationCompletion::from_cmds(vec![], task.run_id))
-            .await
-            .unwrap();
-        let task = core.poll_workflow_task(&task_q).await.unwrap();
-        // Poll again, and we end up getting a `query` field query response
-        let query = assert_matches!(
-            task.jobs.as_slice(),
-            [WfActivationJob {
-                variant: Some(wf_activation_job::Variant::QueryWorkflow(q)),
-            }] => q
-        );
-        // Complete the query
-        core.complete_workflow_task(WfActivationCompletion::from_cmd(
-            QueryResult {
-                query_id: query.query_id.clone(),
-                variant: Some(
-                    QuerySuccess {
-                        response: Some(q1_resp.into()),
-                    }
-                    .into(),
-                ),
-            }
-            .into(),
-            task.run_id,
-        ))
-        .await
-        .unwrap();
-        // Finish the workflow
-        let task = core.poll_workflow_task(&task_q).await.unwrap();
-        core.complete_workflow_task(WfActivationCompletion::from_cmds(
-            vec![CompleteWorkflowExecution { result: None }.into()],
-            task.run_id,
-        ))
-        .await
-        .unwrap();
+        panic!("Never get here")
     };
     let (q1_res, q2_res, _) = tokio::join!(q1_fut, q2_fut, workflow_completions_future);
-    // Ensure query responses are as expected
-    assert_eq!(&q1_res.unwrap()[0].data, q1_resp);
-    assert_eq!(&q2_res.unwrap()[0].data, q2_resp);
+    // We hand here until sticky schedule to start timeout happens
+    panic!("Never get here")
 }
