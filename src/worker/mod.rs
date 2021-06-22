@@ -244,6 +244,8 @@ impl Worker {
             return Ok(None);
         }
 
+        warn!("Poll wftq resp {:#?}", &res);
+
         let work: ValidPollWFTQResponse = res
             .try_into()
             .map_err(PollWfError::BadPollResponseFromServer)?;

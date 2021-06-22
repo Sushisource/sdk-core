@@ -43,6 +43,8 @@ impl TryFrom<PollWorkflowTaskQueueResponse> for ValidPollWFTQResponse {
                 .map(|h| !h.events.is_empty())
                 .unwrap_or(false)
         {
+            // TODO: Apparently this is totally possible. Need to allow both kinds of responses
+            //   at the same time -- add test
             error!("Poll WFTQ response had a `query` field with a nonempty history");
             return Err(value);
         }
