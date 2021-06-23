@@ -124,6 +124,10 @@ async fn queries_in_wf_task() {
     ))
     .await
     .unwrap();
+    // Poll for a task we will time out
+    let task = core.poll_workflow_task(&task_q).await.unwrap();
+    dbg!(&task);
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     let run_id = task.run_id.to_string();
     let q1_fut = with_gw(core.as_ref(), |gw: GwApi| async move {
@@ -152,14 +156,58 @@ async fn queries_in_wf_task() {
         .unwrap()
     });
     let workflow_completions_future = async {
-        // Trigger the task timeout
+        // Complete now-timed-out task
+        core.complete_workflow_task(WfActivationCompletion::from_cmds(vec![], task.run_id))
+            .await
+            .unwrap();
+        let mut seen_q1 = false;
+        let mut seen_q2 = false;
+        while !seen_q1 || !seen_q2 {
+            dbg!("Polling");
+            let task = core.poll_workflow_task(&task_q).await.unwrap();
+            dbg!("Past second poll");
+            // There should be a query job (really, there should be both... server only sends one?)
+            let query = assert_matches!(
+                task.jobs.as_slice(),
+                [WfActivationJob {
+                    variant: Some(wf_activation_job::Variant::QueryWorkflow(q)),
+                }] => q
+            );
+            let resp = if query.query_id == "query_1" {
+                seen_q1 = true;
+                q1_resp
+            } else {
+                seen_q2 = true;
+                q2_resp
+            };
+            // Complete the query
+            core.complete_workflow_task(WfActivationCompletion::from_cmd(
+                QueryResult {
+                    query_id: query.query_id.clone(),
+                    variant: Some(
+                        QuerySuccess {
+                            response: Some(resp.into()),
+                        }
+                        .into(),
+                    ),
+                }
+                .into(),
+                task.run_id,
+            ))
+            .await
+            .unwrap();
+        }
+        // Finish the workflow
         let task = core.poll_workflow_task(&task_q).await.unwrap();
-        dbg!(task);
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        let task = core.poll_workflow_task(&task_q).await.unwrap();
-        panic!("Never get here")
+        core.complete_workflow_task(WfActivationCompletion::from_cmds(
+            vec![CompleteWorkflowExecution { result: None }.into()],
+            task.run_id,
+        ))
+        .await
+        .unwrap();
     };
     let (q1_res, q2_res, _) = tokio::join!(q1_fut, q2_fut, workflow_completions_future);
-    // We hand here until sticky schedule to start timeout happens
-    panic!("Never get here")
+    // Ensure query responses are as expected
+    assert_eq!(&q1_res.unwrap()[0].data, q1_resp);
+    assert_eq!(&q2_res.unwrap()[0].data, q2_resp);
 }
