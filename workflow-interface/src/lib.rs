@@ -1,3 +1,5 @@
+#[cfg(feature = "wasm")]
+pub mod wasm;
 mod workflow_context;
 
 pub use workflow_context::{
@@ -7,6 +9,9 @@ pub use workflow_context::{
 
 use crate::workflow_context::{ChildWfCommon, PendingChildWorkflow};
 use std::fmt::Debug;
+use temporal_sdk_core_protos::coresdk::workflow_commands::{
+    ScheduleActivity, ScheduleLocalActivity, StartTimer,
+};
 use temporal_sdk_core_protos::{
     coresdk::{
         activity_result::ActivityResolution,
@@ -192,4 +197,38 @@ pub struct CommandCreateRequest {
 pub struct CommandSubscribeChildWorkflowCompletion {
     pub seq: u32,
     pub unblocker: oneshot::Sender<UnblockEvent>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum CommandID {
+    Timer(u32),
+    Activity(u32),
+    ChildWorkflowStart(u32),
+    ChildWorkflowComplete(u32),
+    SignalExternal(u32),
+    CancelExternal(u32),
+}
+
+pub fn cmd_id_from_variant(variant: &workflow_command::Variant) -> CommandID {
+    match variant {
+        workflow_command::Variant::StartTimer(StartTimer { seq, .. }) => CommandID::Timer(*seq),
+        workflow_command::Variant::ScheduleActivity(ScheduleActivity { seq, .. })
+        | workflow_command::Variant::ScheduleLocalActivity(ScheduleLocalActivity { seq, .. }) => {
+            CommandID::Activity(*seq)
+        }
+        workflow_command::Variant::SetPatchMarker(_) => {
+            panic!("Set patch marker should be a nonblocking command")
+        }
+        workflow_command::Variant::StartChildWorkflowExecution(req) => {
+            let seq = req.seq;
+            CommandID::ChildWorkflowStart(seq)
+        }
+        workflow_command::Variant::SignalExternalWorkflowExecution(req) => {
+            CommandID::SignalExternal(req.seq)
+        }
+        workflow_command::Variant::RequestCancelExternalWorkflowExecution(req) => {
+            CommandID::CancelExternal(req.seq)
+        }
+        _ => unimplemented!("Command type not implemented"),
+    }
 }

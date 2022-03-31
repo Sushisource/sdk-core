@@ -1,6 +1,17 @@
-use fp_bindgen::prelude::*;
-use fp_bindgen::types::CargoDependency;
+use fp_bindgen::{prelude::*, types::CargoDependency};
+use serde_bytes::ByteBuf;
 use std::collections::{BTreeMap, BTreeSet};
+
+// TODO: Some of these types can be shared between native/wasm by feature-flagging whether
+//   or not they derive all the serialization goop.
+
+#[derive(Serializable)]
+pub struct WasmWfInput {
+    namespace: String,
+    task_queue: String,
+    // TODO: Args
+    is_cancelled: bool,
+}
 
 #[derive(Serializable)]
 pub enum WasmWfResult<T> {
@@ -8,12 +19,40 @@ pub enum WasmWfResult<T> {
     Error(String),
 }
 
+#[derive(Serializable)]
+pub enum WasmWfCmd {
+    NewCmd(WasmCmdRequest),
+}
+
+#[derive(Serializable)]
+pub struct WasmCmdRequest {
+    /// A serialized workflow_command::Variant
+    pub wf_cmd_variant_proto: ByteBuf,
+}
+
+#[derive(Serializable)]
+pub enum WasmUnblock {
+    Timer(u32, TimerResult),
+}
+
+/// Result of awaiting on a timer
+#[derive(Debug, Copy, Clone, Serializable)]
+pub enum TimerResult {
+    /// The timer was cancelled
+    Cancelled,
+    /// The timer elapsed and fired
+    Fired,
+}
+
 // Required even though there are none (yet)
 fp_import! {}
 
 // Oddly, `()` is not serializable yet. Just use a string for now.
 fp_export! {
-    async fn invoke_workflow() -> WasmWfResult<String>;
+    async fn invoke_workflow(input: WasmWfInput) -> WasmWfResult<String>;
+    fn gather_commands() -> Vec<WasmWfCmd>;
+    // Return value currently pointless. Macros break with no return value.
+    fn unblock(dat: WasmUnblock) -> u32;
 }
 
 const VERSION: &str = "0.1.0";

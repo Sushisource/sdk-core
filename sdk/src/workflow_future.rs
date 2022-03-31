@@ -24,8 +24,7 @@ use temporal_sdk_core_protos::{
             CancelSignalWorkflow, CancelTimer, CancelUnstartedChildWorkflowExecution,
             CancelWorkflowExecution, CompleteWorkflowExecution, FailWorkflowExecution,
             RequestCancelActivity, RequestCancelExternalWorkflowExecution,
-            RequestCancelLocalActivity, ScheduleActivity, ScheduleLocalActivity,
-            StartChildWorkflowExecution, StartTimer,
+            RequestCancelLocalActivity, StartChildWorkflowExecution,
         },
         workflow_completion::WorkflowActivationCompletion,
     },
@@ -33,8 +32,8 @@ use temporal_sdk_core_protos::{
     utilities::TryIntoOrNone,
 };
 use temporal_workflow_interface::{
-    CancellableID, RustWfCmd, SignalData, TimerResult, UnblockEvent, WfContext,
-    WfContextSharedData, WfExitValue, WorkflowResult,
+    cmd_id_from_variant, CancellableID, CommandID, RustWfCmd, SignalData, TimerResult,
+    UnblockEvent, WfContext, WfContextSharedData, WfExitValue, WorkflowResult,
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -364,36 +363,17 @@ impl Future for WorkflowFuture {
                         }
                     }
                     RustWfCmd::NewCmd(cmd) => {
-                        activation_cmds.push(cmd.cmd.clone());
-
-                        let command_id = match cmd.cmd {
-                            workflow_command::Variant::StartTimer(StartTimer { seq, .. }) => {
-                                CommandID::Timer(seq)
-                            }
-                            workflow_command::Variant::ScheduleActivity(ScheduleActivity {
-                                seq,
-                                ..
-                            })
-                            | workflow_command::Variant::ScheduleLocalActivity(
-                                ScheduleLocalActivity { seq, .. },
-                            ) => CommandID::Activity(seq),
-                            workflow_command::Variant::SetPatchMarker(_) => {
-                                panic!("Set patch marker should be a nonblocking command")
-                            }
+                        let command_id = cmd_id_from_variant(&cmd.cmd);
+                        match &cmd.cmd {
                             workflow_command::Variant::StartChildWorkflowExecution(req) => {
                                 let seq = req.seq;
                                 // Save the start request to support cancellation later
-                                self.child_workflow_starts.insert(seq, req);
-                                CommandID::ChildWorkflowStart(seq)
+                                self.child_workflow_starts.insert(seq, req.clone());
                             }
-                            workflow_command::Variant::SignalExternalWorkflowExecution(req) => {
-                                CommandID::SignalExternal(req.seq)
-                            }
-                            workflow_command::Variant::RequestCancelExternalWorkflowExecution(
-                                req,
-                            ) => CommandID::CancelExternal(req.seq),
-                            _ => unimplemented!("Command type not implemented"),
+                            _ => {}
                         };
+                        activation_cmds.push(cmd.cmd);
+
                         self.command_status.insert(
                             command_id,
                             WFCommandFutInfo {
@@ -485,14 +465,4 @@ impl Future for WorkflowFuture {
             // and it allows us to rely on evictions for death and cache management
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-enum CommandID {
-    Timer(u32),
-    Activity(u32),
-    ChildWorkflowStart(u32),
-    ChildWorkflowComplete(u32),
-    SignalExternal(u32),
-    CancelExternal(u32),
 }

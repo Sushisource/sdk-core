@@ -3,11 +3,21 @@ name = "wasm-workflow-example"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
-fp-bindgen = "1"
+crossbeam = "0.8"
+tokio = { version = "1.17", default-features = false, features = ["rt", "sync"]}
+
+[dependencies.temporal-sdk-core-protos]
+path = "../sdk-core-protos"
+version = "0.1"
 
 [dependencies.temporal-workflow-interface]
 path = "../workflow-interface"
+features = ["wasm"]
+
+[dependencies.temporal-wasm-workflow-binding]
+path = "../bindings/rust-plugin"
 version = "0.1"
