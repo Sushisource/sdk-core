@@ -1,3 +1,2 @@
 [workspace]
-members = ["bridge-ffi", "core", "client", "core-api", "fsm", "test-utils", "sdk-core-protos", "sdk"]
-exclude = ["workflow-interface"]
+members = ["bridge-ffi", "core", "client", "core-api", "fsm", "test-utils", "sdk-core-protos", "sdk", "workflow-interface"]

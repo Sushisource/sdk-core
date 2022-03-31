@@ -44,3 +44,7 @@ version = "0.1"
 [dependencies.temporal-client]
 path = "../client"
 version = "0.1"
+
+[dependencies.temporal-workflow-interface]
+path = "../workflow-interface"
+version = "0.1"

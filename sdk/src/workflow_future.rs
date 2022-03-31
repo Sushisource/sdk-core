@@ -1,8 +1,4 @@
-use crate::{
-    conversions::anyhow_to_fail, workflow_context::WfContextSharedData, CancellableID, RustWfCmd,
-    SignalData, TimerResult, UnblockEvent, WfContext, WfExitValue, WorkflowFunction,
-    WorkflowResult,
-};
+use crate::{conversions::anyhow_to_fail, WorkflowFunction};
 use anyhow::{anyhow, bail, Context as AnyhowContext, Error};
 use crossbeam::channel::Receiver;
 use futures::{future::BoxFuture, FutureExt};
@@ -35,6 +31,10 @@ use temporal_sdk_core_protos::{
     },
     temporal::api::failure::v1::Failure,
     utilities::TryIntoOrNone,
+};
+use temporal_workflow_interface::{
+    CancellableID, RustWfCmd, SignalData, TimerResult, UnblockEvent, WfContext,
+    WfContextSharedData, WfExitValue, WorkflowResult,
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},

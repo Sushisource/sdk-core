@@ -1,6 +1,11 @@
 mod workflow_context;
 
-use crate::workflow_context::{ChildWfCommon, PendingChildWorkflow, SignalData};
+pub use workflow_context::{
+    ActivityOptions, CancellableFuture, ChildWorkflow, ChildWorkflowOptions, LocalActivityOptions,
+    Signal, SignalData, SignalWorkflowOptions, WfContext, WfContextSharedData,
+};
+
+use crate::workflow_context::{ChildWfCommon, PendingChildWorkflow};
 use std::fmt::Debug;
 use temporal_sdk_core_protos::{
     coresdk::{
@@ -33,8 +38,15 @@ pub enum WfExitValue<T: Debug> {
     Normal(T),
 }
 
+impl<T: Debug> WfExitValue<T> {
+    /// Construct a [WfExitValue::ContinueAsNew] variant (handles boxing)
+    pub fn continue_as_new(can: ContinueAsNewWorkflowExecution) -> Self {
+        Self::ContinueAsNew(Box::new(can))
+    }
+}
+
 #[derive(Debug)]
-enum UnblockEvent {
+pub enum UnblockEvent {
     Timer(u32, TimerResult),
     Activity(u32, Box<ActivityResolution>),
     WorkflowStart(u32, Box<ChildWorkflowStartStatus>),
@@ -162,7 +174,7 @@ pub enum CancellableID {
 
 #[derive(derive_more::From)]
 #[allow(clippy::large_enum_variant)]
-enum RustWfCmd {
+pub enum RustWfCmd {
     #[from(ignore)]
     Cancel(CancellableID),
     ForceWFTFailure(anyhow::Error),
@@ -172,12 +184,12 @@ enum RustWfCmd {
     SubscribeSignal(String, UnboundedSender<SignalData>),
 }
 
-struct CommandCreateRequest {
-    cmd: workflow_command::Variant,
-    unblocker: oneshot::Sender<UnblockEvent>,
+pub struct CommandCreateRequest {
+    pub cmd: workflow_command::Variant,
+    pub unblocker: oneshot::Sender<UnblockEvent>,
 }
 
-struct CommandSubscribeChildWorkflowCompletion {
-    seq: u32,
-    unblocker: oneshot::Sender<UnblockEvent>,
+pub struct CommandSubscribeChildWorkflowCompletion {
+    pub seq: u32,
+    pub unblocker: oneshot::Sender<UnblockEvent>,
 }

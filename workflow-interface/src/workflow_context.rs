@@ -106,9 +106,10 @@ pub struct WfContextSharedData {
 // TODO: Dataconverter type interface to replace Payloads here. Possibly just use serde
 //    traits.
 impl WfContext {
+    // TODO: Shouldn't really be pub
     /// Create a new wf context, returning the context itself and a receiver which outputs commands
     /// sent from the workflow.
-    pub(super) fn new(
+    pub fn new(
         namespace: String,
         task_queue: String,
         args: Vec<Payload>,
@@ -152,7 +153,7 @@ impl WfContext {
         self.shared.read().wf_time
     }
 
-    pub(crate) fn get_shared_data(&self) -> Arc<RwLock<WfContextSharedData>> {
+    pub fn get_shared_data(&self) -> Arc<RwLock<WfContextSharedData>> {
         self.shared.clone()
     }
 
@@ -660,5 +661,18 @@ impl StartedChildWorkflow {
     ) -> impl CancellableFuture<SignalExternalWfResult> {
         let target = sig_we::Target::ChildWorkflowId(self.common.workflow_id.clone());
         cx.send_signal_wf(target, data.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::WorkflowResult;
+
+    // Verify simple wf compiles
+    #[allow(dead_code)]
+    async fn timer_wf(command_sink: WfContext) -> WorkflowResult<()> {
+        command_sink.timer(Duration::from_secs(1)).await;
+        Ok(().into())
     }
 }
