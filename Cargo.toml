@@ -1,3 +1,4 @@
 [workspace]
 members = ["bridge-ffi", "core", "client", "core-api", "fsm", "test-utils", "sdk-core-protos",
-           "sdk", "workflow-interface", "wasm-workflow-example", "wasm-protocol"]
+           "sdk", "workflow-interface",
+           "wasm-workflow-example", "wasm-protocol", "wasm-worker-example"]

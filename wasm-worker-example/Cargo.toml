@@ -1,0 +1,17 @@
+[package]
+name = "wasm-worker-example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+temporal-sdk-core = { path = "../core" }
+temporal-sdk-core-test-utils = { path = "../test-utils" }
+
+tokio = { version = "1.1", features = ["rt", "rt-multi-thread"] }
+
+[dependencies.temporal-sdk]
+path = "../sdk"
+version = "0.1.0-alpha.1"
+features = ["wasm"]

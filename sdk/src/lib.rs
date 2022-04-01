@@ -36,6 +36,8 @@ extern crate tracing;
 mod conversions;
 pub mod interceptors;
 mod payload_converter;
+#[cfg(feature = "wasm")]
+mod wasm;
 mod workflow_future;
 
 pub use temporal_workflow_interface::{
@@ -44,6 +46,7 @@ pub use temporal_workflow_interface::{
 };
 
 use crate::interceptors::WorkerInterceptor;
+use crate::wasm::{wasm_test, WasmWorkflow};
 use anyhow::{anyhow, bail};
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use once_cell::sync::OnceCell;
@@ -114,8 +117,11 @@ struct CommonWorker {
 struct WorkflowHalf {
     /// Maps run id to the driver
     workflows: HashMap<String, UnboundedSender<WorkflowActivation>>,
-    /// Maps workflow type to the function for executing workflow runs with that ID
+    /// Maps workflow type to the function for executing workflow runs with that type
     workflow_fns: HashMap<String, WorkflowFunction>,
+    /// Maps workflow type to the wasm blob for executing workflow runs with that type
+    #[cfg(feature = "wasm")]
+    workflow_wasm_blobs: HashMap<String, WasmWorkflow>,
     /// Handles for each spawned workflow run are inserted here to be cleaned up when all runs
     /// are finished
     join_handles: FuturesUnordered<BoxFuture<'static, Result<WorkflowResult<()>, JoinError>>>,
@@ -128,8 +134,6 @@ struct ActivityHalf {
 }
 
 impl Worker {
-    // pub fn new(cfg: WorkerConfig) -> Self {}
-
     #[doc(hidden)]
     /// Create a new rust worker from a core worker
     pub fn new_from_core(worker: Arc<dyn CoreWorker>, task_queue: impl Into<String>) -> Self {
@@ -142,6 +146,8 @@ impl Worker {
             workflow_half: WorkflowHalf {
                 workflows: Default::default(),
                 workflow_fns: Default::default(),
+                #[cfg(feature = "wasm")]
+                workflow_wasm_blobs: Default::default(),
                 join_handles: FuturesUnordered::new(),
             },
             activity_half: ActivityHalf {
@@ -173,6 +179,15 @@ impl Worker {
         self.workflow_half
             .workflow_fns
             .insert(workflow_type.into(), wf_function.into());
+    }
+
+    #[cfg(feature = "wasm")]
+    pub fn register_wasm_wf(&mut self, workflow_type: impl Into<String>, wasm_bytes: &[u8]) {
+        wasm_test(wasm_bytes).unwrap();
+        let ww = WasmWorkflow {};
+        self.workflow_half
+            .workflow_wasm_blobs
+            .insert(workflow_type.into(), ww);
     }
 
     /// Register an Activity function to invoke when the Worker is asked to run an activity of
