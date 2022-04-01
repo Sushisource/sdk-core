@@ -1,8 +1,5 @@
 use crossbeam::channel::Receiver;
-use std::{
-    borrow::BorrowMut, cell::RefCell, collections::HashMap, ops::Add, panic, sync::Once,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, panic, sync::Once, time::Duration};
 use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
 use temporal_wasm_workflow_binding::*;
 use temporal_workflow_interface::wasm::convert_result;

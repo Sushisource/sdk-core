@@ -183,6 +183,9 @@ impl Worker {
             .insert(workflow_type.into(), wf_function.into());
     }
 
+    /// Register a wasm blob as a workflow function for the given workflow type.
+    /// TODO: Wasm blob should actually define internal mapping of types->impls that can be queried
+    ///  on blob registration.
     #[cfg(feature = "wasm")]
     pub fn register_wasm_wf(&mut self, workflow_type: impl Into<String>, wasm_bytes: &[u8]) {
         let ww = wasm_init(wasm_bytes).unwrap();
@@ -191,6 +194,7 @@ impl Worker {
             .insert(workflow_type.into(), ww);
     }
 
+    /// TODO: Delete me once working with workflow future
     pub async fn wasm_test(&self, workflow_type: &str) {
         let ww = self
             .workflow_half

@@ -1,3 +1,4 @@
+use crate::wasm::types::{TimerResult, WasmUnblock};
 use crate::wasm::{runtime::Runtime, types::WasmWfInput};
 use std::time::Duration;
 
@@ -104,12 +105,9 @@ mod runtime {
             result
         }
         pub fn unblock_raw(&self, dat: Vec<u8>) -> Result<u32, InvocationError> {
-            let mut env = RuntimeInstanceData::default();
-            let import_object = create_import_object(self.module.store(), &env);
-            let instance = Instance::new(&self.module, &import_object).unwrap();
-            env.init_with_instance(&instance).unwrap();
-            let dat = export_to_guest_raw(&env, dat);
-            let function = instance
+            let dat = export_to_guest_raw(&self.env, dat);
+            let function = self
+                .instance
                 .exports
                 .get_native_function::<FatPtr, u32>("__fp_gen_unblock")
                 .map_err(|_| InvocationError::FunctionNotExported)?;
@@ -160,6 +158,9 @@ impl WasmWorkflow {
             tokio::time::sleep(Duration::from_millis(100)).await;
             let cmds = self.runtime.gather_commands().unwrap();
             info!("commands: {:?}", cmds);
+            self.runtime
+                .unblock(WasmUnblock::Timer(1, TimerResult::Fired))
+                .unwrap();
         };
 
         let (res, _) = tokio::join!(run_fut, gather_fut);

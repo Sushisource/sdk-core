@@ -115,7 +115,7 @@ impl WfContext {
         args: Vec<Payload>,
         am_cancelled: watch::Receiver<bool>,
     ) -> (Self, Receiver<RustWfCmd>) {
-        // We need to use a normal std channel since our receiving side is non-async
+        // We need to use a normal channel since our receiving side is non-async
         let (chan, rx) = crossbeam::channel::unbounded();
         (
             Self {
