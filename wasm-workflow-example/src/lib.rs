@@ -2,10 +2,10 @@ use crossbeam::channel::Receiver;
 use std::{cell::RefCell, collections::HashMap, panic, sync::Once, time::Duration};
 use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
 use temporal_wasm_workflow_binding::*;
-use temporal_workflow_interface::wasm::convert_result;
 use temporal_workflow_interface::{
-    cmd_id_from_variant, wasm::encode_cmd_variant, CommandID, RustWfCmd, UnblockEvent, WfContext,
-    WorkflowResult,
+    cmd_id_from_variant,
+    wasm::{convert_result, encode_cmd_variant},
+    CommandID, RustWfCmd, UnblockEvent, WfContext, WorkflowResult,
 };
 use tokio::sync::{oneshot, watch};
 

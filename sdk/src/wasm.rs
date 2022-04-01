@@ -1,5 +1,7 @@
-use crate::wasm::types::{TimerResult, WasmUnblock};
-use crate::wasm::{runtime::Runtime, types::WasmWfInput};
+use crate::wasm::{
+    runtime::Runtime,
+    types::{TimerResult, WasmUnblock, WasmWfInput},
+};
 use std::time::Duration;
 
 // use wasmer::{imports, Cranelift, Instance, Module, Store, Universal};

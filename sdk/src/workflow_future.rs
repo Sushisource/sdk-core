@@ -1,6 +1,6 @@
-use crate::{conversions::anyhow_to_fail, WorkflowFunction};
+use crate::{conversions::anyhow_to_fail, WasmWorkflow, WorkflowFunction};
 use anyhow::{anyhow, bail, Context as AnyhowContext, Error};
-use crossbeam::channel::Receiver;
+use crossbeam::channel::{Receiver, TryRecvError};
 use futures::{future::BoxFuture, FutureExt};
 use parking_lot::RwLock;
 use std::{
@@ -56,6 +56,9 @@ impl WorkflowFunction {
     ) {
         let (cancel_tx, cancel_rx) = watch::channel(false);
         let (wf_context, cmd_receiver) = WfContext::new(namespace, task_queue, args, cancel_rx);
+        let driver = WfContextDriver::Native(NativeWfDriver {
+            outgoing_commands: cmd_receiver,
+        });
         let (tx, incoming_activations) = unbounded_channel();
         (
             WorkflowFuture {
@@ -64,7 +67,7 @@ impl WorkflowFunction {
                 // an artificial limit on how many commands we can unblock in one poll round.
                 // TODO: Now we *need* deadlock detection or we could hose the whole system
                 inner: tokio::task::unconstrained((self.wf_func)(wf_context)).boxed(),
-                incoming_commands: cmd_receiver,
+                driver,
                 outgoing_completions,
                 incoming_activations,
                 command_status: Default::default(),
@@ -90,11 +93,41 @@ enum SigChanOrBuffer {
     Buffer(Vec<SignalData>),
 }
 
+enum WfContextDriver {
+    Native(NativeWfDriver),
+    Wasm(WasmWfDriver),
+}
+struct NativeWfDriver {
+    outgoing_commands: Receiver<RustWfCmd>,
+}
+struct WasmWfDriver {
+    wf: WasmWorkflow,
+}
+
+impl WfContextDriver {
+    fn ready_commands(&mut self) -> Vec<RustWfCmd> {
+        match self {
+            WfContextDriver::Native(NativeWfDriver {
+                outgoing_commands, ..
+            }) => {
+                let mut cmds = vec![];
+                while let Ok(c) = outgoing_commands.try_recv() {
+                    cmds.push(c)
+                }
+                cmds
+            }
+            WfContextDriver::Wasm(wd) => {
+                unimplemented!()
+            }
+        }
+    }
+}
+
 pub struct WorkflowFuture {
     /// Future produced by calling the workflow function
     inner: BoxFuture<'static, WorkflowResult<()>>,
-    /// Commands produced inside user's wf code
-    incoming_commands: Receiver<RustWfCmd>,
+    /// Handles communication with the actual workflow code
+    driver: WfContextDriver,
     /// Once blocked or the workflow has finished or errored out, the result is sent here
     outgoing_completions: UnboundedSender<WorkflowActivationCompletion>,
     /// Activations from core
@@ -300,7 +333,7 @@ impl Future for WorkflowFuture {
             };
 
             let mut activation_cmds = vec![];
-            while let Ok(cmd) = self.incoming_commands.try_recv() {
+            for cmd in self.driver.ready_commands() {
                 match cmd {
                     RustWfCmd::Cancel(cancellable_id) => {
                         match cancellable_id {

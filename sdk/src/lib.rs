@@ -328,6 +328,8 @@ impl WorkflowHalf {
                 .get(workflow_type)
                 .ok_or_else(|| anyhow!("Workflow type {workflow_type} not found"))?;
 
+            // TODO: Look up if in wasm map here, call start on that.
+
             let (wff, activations) = wf_function.start_workflow(
                 common.worker.get_config().namespace.clone(),
                 common.task_queue.clone(),
