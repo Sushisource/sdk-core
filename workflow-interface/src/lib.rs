@@ -189,9 +189,26 @@ pub enum RustWfCmd {
     SubscribeSignal(String, UnboundedSender<SignalData>),
 }
 
+// TODO: Don't love this
+#[derive(derive_more::From)]
+pub enum Unblocker {
+    Chan(oneshot::Sender<UnblockEvent>),
+    Fn(Box<dyn FnOnce(UnblockEvent) + Send>),
+}
+impl Unblocker {
+    pub fn unblock(self, event: UnblockEvent) {
+        match self {
+            Unblocker::Chan(chan) => chan
+                .send(event)
+                .expect("Unblock channel receive half must exist"),
+            Unblocker::Fn(fun) => fun(event),
+        }
+    }
+}
+
 pub struct CommandCreateRequest {
     pub cmd: workflow_command::Variant,
-    pub unblocker: oneshot::Sender<UnblockEvent>,
+    pub unblocker: Unblocker,
 }
 
 pub struct CommandSubscribeChildWorkflowCompletion {

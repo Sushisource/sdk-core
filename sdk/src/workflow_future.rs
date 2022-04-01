@@ -1,8 +1,9 @@
-use crate::{conversions::anyhow_to_fail, WasmWorkflow, WorkflowFunction};
+use crate::{conversions::anyhow_to_fail, wasm::types::WasmWfCmd, WasmWorkflow, WorkflowFunction};
 use anyhow::{anyhow, bail, Context as AnyhowContext, Error};
-use crossbeam::channel::{Receiver, TryRecvError};
+use crossbeam::channel::Receiver;
 use futures::{future::BoxFuture, FutureExt};
 use parking_lot::RwLock;
+use prost::Message;
 use std::{
     collections::{hash_map::Entry, HashMap},
     future::Future,
@@ -11,6 +12,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use temporal_sdk_core_protos::coresdk::workflow_commands::WorkflowCommand;
 use temporal_sdk_core_protos::{
     coresdk::{
         common::Payload,
@@ -32,12 +34,13 @@ use temporal_sdk_core_protos::{
     utilities::TryIntoOrNone,
 };
 use temporal_workflow_interface::{
-    cmd_id_from_variant, CancellableID, CommandID, RustWfCmd, SignalData, TimerResult,
-    UnblockEvent, WfContext, WfContextSharedData, WfExitValue, WorkflowResult,
+    cmd_id_from_variant, CancellableID, CommandCreateRequest, CommandID, RustWfCmd, SignalData,
+    TimerResult, UnblockEvent, Unblocker, WfContext, WfContextSharedData, WfExitValue,
+    WorkflowResult,
 };
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    oneshot, watch,
+    watch,
 };
 
 impl WorkflowFunction {
@@ -81,7 +84,7 @@ impl WorkflowFunction {
 }
 
 struct WFCommandFutInfo {
-    unblocker: oneshot::Sender<UnblockEvent>,
+    unblocker: Unblocker,
 }
 
 // Allows the workflow to receive signals even though the signal handler may not yet be registered.
@@ -117,7 +120,24 @@ impl WfContextDriver {
                 cmds
             }
             WfContextDriver::Wasm(wd) => {
-                unimplemented!()
+                let cmds = wd.wf.runtime.gather_commands().expect("TODO: No panic");
+                cmds.into_iter()
+                    .map(|cmd| match cmd {
+                        WasmWfCmd::NewCmd(cmd_req) => {
+                            let wf_cmd: WorkflowCommand =
+                                Message::decode(cmd_req.wf_cmd_variant_proto.as_ref())
+                                    .expect("TODO: No decode panic");
+                            let rt = wd.wf.runtime.clone();
+                            let unblock_fn = move |event: UnblockEvent| {
+                                rt.unblock(event.into()).expect("Unblocking works");
+                            };
+                            RustWfCmd::NewCmd(CommandCreateRequest {
+                                cmd: wf_cmd.variant.expect("Variant always present"),
+                                unblocker: Unblocker::Fn(Box::new(unblock_fn)),
+                            })
+                        }
+                    })
+                    .collect()
             }
         }
     }
@@ -158,8 +178,7 @@ impl WorkflowFuture {
         unblocker
             .ok_or_else(|| anyhow!("Command {:?} not found to unblock!", cmd_id))?
             .unblocker
-            .send(event)
-            .expect("Receive half of unblock channel must exist");
+            .unblock(event);
         Ok(())
     }
 
@@ -410,7 +429,7 @@ impl Future for WorkflowFuture {
                         self.command_status.insert(
                             command_id,
                             WFCommandFutInfo {
-                                unblocker: cmd.unblocker,
+                                unblocker: cmd.unblocker.into(),
                             },
                         );
                     }
@@ -421,7 +440,7 @@ impl Future for WorkflowFuture {
                         self.command_status.insert(
                             CommandID::ChildWorkflowComplete(sub.seq),
                             WFCommandFutInfo {
-                                unblocker: sub.unblocker,
+                                unblocker: sub.unblocker.into(),
                             },
                         );
                     }

@@ -2,14 +2,16 @@ use crate::wasm::{
     runtime::Runtime,
     types::{TimerResult, WasmUnblock, WasmWfInput},
 };
+use std::sync::Arc;
 use std::time::Duration;
 
-// use wasmer::{imports, Cranelift, Instance, Module, Store, Universal};
-mod types {
-    include!("../../bindings/rust-wasmer-runtime/types.rs");
+pub mod types {
+    pub use temporal_wasm_workflow_binding::{
+        TimerResult, WasmCmdRequest, WasmUnblock, WasmWfCmd, WasmWfInput, WasmWfResult,
+    };
 }
 mod runtime {
-    // NOTE: All copy-pasted and modified from generated bindings.
+    // NOTE: Copy-pasted and modified from generated bindings.
     use super::types::*;
     use fp_bindgen_support::{
         common::mem::FatPtr,
@@ -134,11 +136,11 @@ mod runtime {
 }
 
 pub(crate) struct WasmWorkflow {
-    pub runtime: Runtime,
+    pub runtime: Arc<Runtime>,
 }
 
 pub(crate) fn wasm_init(wasm_bytes: &[u8]) -> Result<WasmWorkflow, anyhow::Error> {
-    let runtime = runtime::Runtime::new(wasm_bytes)?;
+    let runtime = Arc::new(runtime::Runtime::new(wasm_bytes)?);
     info!("Done compiling wasm!");
     Ok(WasmWorkflow { runtime })
 }

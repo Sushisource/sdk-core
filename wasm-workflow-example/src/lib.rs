@@ -4,10 +4,10 @@ use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
 use temporal_wasm_workflow_binding::*;
 use temporal_workflow_interface::{
     cmd_id_from_variant,
-    wasm::{convert_result, encode_cmd_variant},
-    CommandID, RustWfCmd, UnblockEvent, WfContext, WorkflowResult,
+    wasm::{convert_result, encode_wf_cmd},
+    CommandID, RustWfCmd, Unblocker, WfContext, WorkflowResult,
 };
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 // TODO: This should (except actual wf definition) be lifted out into either the interface crate
 //  behind a flag, or another crate specifically for wasm workflows or something. Flag better.
@@ -31,7 +31,7 @@ async fn invoke_workflow(input: WasmWfInput) -> WasmWfResult<String> {
     init_panic_hook();
 
     // TODO: Save tx side of cancel
-    let (cancel_tx, cancel_rx) = watch::channel(input.is_cancelled);
+    let (_cancel_tx, cancel_rx) = watch::channel(input.is_cancelled);
     let (new_ctx, wf_cmd_rx) = WfContext::new(input.namespace, input.task_queue, vec![], cancel_rx);
     CMD_RCV.with(|cmd_rcv| {
         *cmd_rcv.borrow_mut() = Some(wf_cmd_rx);
@@ -53,7 +53,7 @@ fn gather_commands() -> Vec<WasmWfCmd> {
             let cmd = match cmd {
                 RustWfCmd::NewCmd(c) => {
                     add_cmd_to_unblock_map(&c.cmd, c.unblocker);
-                    WasmWfCmd::NewCmd(encode_cmd_variant(c.cmd))
+                    WasmWfCmd::NewCmd(encode_wf_cmd(c.cmd))
                 }
                 _ => unimplemented!(),
             };
@@ -73,20 +73,16 @@ fn unblock(dat: WasmUnblock) -> u32 {
         unblocker
             .expect("TODO: Return something instead of panic")
             .unblocker
-            .send(dat.into())
-            .expect("Receive half of unblock channel must exist");
+            .unblock(dat.into());
     });
     0
 }
 
 struct WFCommandFutInfo {
-    unblocker: oneshot::Sender<UnblockEvent>,
+    unblocker: Unblocker,
 }
 
-fn add_cmd_to_unblock_map(
-    variant: &workflow_command::Variant,
-    unblocker: oneshot::Sender<UnblockEvent>,
-) {
+fn add_cmd_to_unblock_map(variant: &workflow_command::Variant, unblocker: Unblocker) {
     let cmd_id = cmd_id_from_variant(variant);
     let info = WFCommandFutInfo { unblocker };
     UNLBOCK_MAP.with(|map| {

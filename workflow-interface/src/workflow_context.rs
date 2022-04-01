@@ -179,7 +179,7 @@ impl WfContext {
                     start_to_fire_timeout: Some(duration.into()),
                 }
                 .into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );
@@ -199,7 +199,7 @@ impl WfContext {
         self.send(
             CommandCreateRequest {
                 cmd: opts.into_command(seq).into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );
@@ -224,7 +224,7 @@ impl WfContext {
         self.send(
             CommandCreateRequest {
                 cmd: opts.into_command(seq).into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );
@@ -330,7 +330,7 @@ impl WfContext {
                     target: Some(target),
                 }
                 .into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );
@@ -355,7 +355,7 @@ impl WfContext {
                     headers: signal.data.headers,
                 }
                 .into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );
@@ -627,7 +627,7 @@ impl ChildWorkflow {
         cx.send(
             CommandCreateRequest {
                 cmd: self.opts.into_command(child_seq).into(),
-                unblocker,
+                unblocker: unblocker.into(),
             }
             .into(),
         );

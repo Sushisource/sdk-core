@@ -1,7 +1,8 @@
 use crate::{TimerResult, UnblockEvent, WfExitValue, WorkflowResult};
+use prost::Message;
 use serde_bytes::ByteBuf;
 use std::fmt::Debug;
-use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
+use temporal_sdk_core_protos::coresdk::workflow_commands::{workflow_command, WorkflowCommand};
 use temporal_wasm_workflow_binding::{WasmCmdRequest, WasmUnblock, WasmWfResult};
 
 impl From<WasmUnblock> for UnblockEvent {
@@ -12,11 +13,28 @@ impl From<WasmUnblock> for UnblockEvent {
     }
 }
 
+impl From<UnblockEvent> for WasmUnblock {
+    fn from(ub: UnblockEvent) -> Self {
+        match ub {
+            UnblockEvent::Timer(id, res) => WasmUnblock::Timer(id, res.into()),
+            _ => unimplemented!(),
+        }
+    }
+}
+
 impl From<temporal_wasm_workflow_binding::TimerResult> for TimerResult {
     fn from(tr: temporal_wasm_workflow_binding::TimerResult) -> Self {
         match tr {
             temporal_wasm_workflow_binding::TimerResult::Cancelled => TimerResult::Cancelled,
             temporal_wasm_workflow_binding::TimerResult::Fired => TimerResult::Fired,
+        }
+    }
+}
+impl From<TimerResult> for temporal_wasm_workflow_binding::TimerResult {
+    fn from(tr: TimerResult) -> Self {
+        match tr {
+            TimerResult::Cancelled => temporal_wasm_workflow_binding::TimerResult::Cancelled,
+            TimerResult::Fired => temporal_wasm_workflow_binding::TimerResult::Fired,
         }
     }
 }
@@ -31,9 +49,10 @@ pub fn convert_result<T: Debug>(res: WorkflowResult<T>) -> WasmWfResult<T> {
     }
 }
 
-pub fn encode_cmd_variant(cmd: workflow_command::Variant) -> WasmCmdRequest {
+pub fn encode_wf_cmd(cmd: workflow_command::Variant) -> WasmCmdRequest {
+    let cmd = WorkflowCommand { variant: Some(cmd) };
     let mut bb = Vec::new();
-    cmd.encode(&mut bb);
+    cmd.encode(&mut bb).expect("Encoding works");
     WasmCmdRequest {
         wf_cmd_variant_proto: ByteBuf::from(bb),
     }
