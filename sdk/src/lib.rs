@@ -45,8 +45,10 @@ pub use temporal_workflow_interface::{
     SignalWorkflowOptions, WfContext, WfExitValue, WorkflowResult,
 };
 
-use crate::interceptors::WorkerInterceptor;
-use crate::wasm::{wasm_test, WasmWorkflow};
+use crate::{
+    interceptors::WorkerInterceptor,
+    wasm::{wasm_init, WasmWorkflow},
+};
 use anyhow::{anyhow, bail};
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use once_cell::sync::OnceCell;
@@ -183,11 +185,19 @@ impl Worker {
 
     #[cfg(feature = "wasm")]
     pub fn register_wasm_wf(&mut self, workflow_type: impl Into<String>, wasm_bytes: &[u8]) {
-        wasm_test(wasm_bytes).unwrap();
-        let ww = WasmWorkflow {};
+        let ww = wasm_init(wasm_bytes).unwrap();
         self.workflow_half
             .workflow_wasm_blobs
             .insert(workflow_type.into(), ww);
+    }
+
+    pub async fn wasm_test(&self, workflow_type: &str) {
+        let ww = self
+            .workflow_half
+            .workflow_wasm_blobs
+            .get(workflow_type)
+            .unwrap();
+        ww.start().await;
     }
 
     /// Register an Activity function to invoke when the Worker is asked to run an activity of

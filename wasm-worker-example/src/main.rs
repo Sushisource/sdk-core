@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use temporal_sdk::Worker;
-use temporal_sdk_core::api::CoreTelemetry;
-use temporal_sdk_core::{init_worker, telemetry_init, WorkerConfigBuilder};
+use temporal_sdk_core::{api::CoreTelemetry, init_worker, telemetry_init, WorkerConfigBuilder};
 use temporal_sdk_core_test_utils::{get_integ_server_options, get_integ_telem_options};
 
 #[tokio::main]
@@ -29,4 +28,5 @@ async fn main() {
     );
     let mut worker = Worker::new_from_core(Arc::new(worker), "wasm_worker");
     worker.register_wasm_wf("wasm_wf", wasm_bytes);
+    worker.wasm_test("wasm_wf").await;
 }

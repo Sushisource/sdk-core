@@ -9,16 +9,16 @@ pub use workflow_context::{
 
 use crate::workflow_context::{ChildWfCommon, PendingChildWorkflow};
 use std::fmt::Debug;
-use temporal_sdk_core_protos::coresdk::workflow_commands::{
-    ScheduleActivity, ScheduleLocalActivity, StartTimer,
-};
 use temporal_sdk_core_protos::{
     coresdk::{
         activity_result::ActivityResolution,
         child_workflow::ChildWorkflowResult,
         common::NamespacedWorkflowExecution,
         workflow_activation::resolve_child_workflow_execution_start::Status as ChildWorkflowStartStatus,
-        workflow_commands::{workflow_command, ContinueAsNewWorkflowExecution},
+        workflow_commands::{
+            workflow_command, ContinueAsNewWorkflowExecution, ScheduleActivity,
+            ScheduleLocalActivity, StartTimer,
+        },
     },
     temporal::api::failure::v1::Failure,
 };

@@ -1,42 +1,53 @@
 use crossbeam::channel::Receiver;
-use std::{cell::RefCell, collections::HashMap, time::Duration};
+use std::{
+    borrow::BorrowMut, cell::RefCell, collections::HashMap, ops::Add, panic, sync::Once,
+    time::Duration,
+};
 use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
 use temporal_wasm_workflow_binding::*;
+use temporal_workflow_interface::wasm::convert_result;
 use temporal_workflow_interface::{
     cmd_id_from_variant, wasm::encode_cmd_variant, CommandID, RustWfCmd, UnblockEvent, WfContext,
     WorkflowResult,
 };
 use tokio::sync::{oneshot, watch};
 
-// TODO: Lots of this will be lifted out into either the interface crate behind a flag,
-//  or another crate specifically for wasm workflows or something. Flag better.
+// TODO: This should (except actual wf definition) be lifted out into either the interface crate
+//  behind a flag, or another crate specifically for wasm workflows or something. Flag better.
 
 // TODO: Eventually want a different context per workflow to support multiple workflows in
 //   one wasm blob
 thread_local! {
-    static CTX: RefCell<Option<WfContext>> = RefCell::new(None);
     static UNLBOCK_MAP: RefCell<HashMap<CommandID, WFCommandFutInfo>> = RefCell::new(HashMap::new());
     static CMD_RCV: RefCell<Option<Receiver<RustWfCmd>>> = RefCell::new(None);
 }
 
+fn init_panic_hook() {
+    static SET_HOOK: Once = Once::new();
+    SET_HOOK.call_once(|| {
+        panic::set_hook(Box::new(|info| log(info.to_string())));
+    });
+}
+
 #[fp_export_impl(temporal_wasm_workflow_binding)]
 async fn invoke_workflow(input: WasmWfInput) -> WasmWfResult<String> {
+    init_panic_hook();
+
     // TODO: Save tx side of cancel
     let (cancel_tx, cancel_rx) = watch::channel(input.is_cancelled);
-    CTX.with(|ctx| {
-        let (new_ctx, wf_cmd_rx) =
-            WfContext::new(input.namespace, input.task_queue, vec![], cancel_rx);
-        CMD_RCV.with(|cmd_rcv| {
-            *cmd_rcv.borrow_mut() = Some(wf_cmd_rx);
-        });
-        *ctx.borrow_mut() = Some(new_ctx);
+    let (new_ctx, wf_cmd_rx) = WfContext::new(input.namespace, input.task_queue, vec![], cancel_rx);
+    CMD_RCV.with(|cmd_rcv| {
+        *cmd_rcv.borrow_mut() = Some(wf_cmd_rx);
     });
 
-    WasmWfResult::Ok("".to_string())
+    let wf_fut = timer_wf(new_ctx);
+    convert_result(wf_fut.await)
 }
 
 #[fp_export_impl(temporal_wasm_workflow_binding)]
 fn gather_commands() -> Vec<WasmWfCmd> {
+    init_panic_hook();
+
     let mut cmds = vec![];
     CMD_RCV.with(|rcv| {
         let mut borrowed = rcv.borrow_mut();
@@ -86,9 +97,7 @@ fn add_cmd_to_unblock_map(
     });
 }
 
-// TODO: Use me
-#[allow(dead_code)]
-async fn timer_wf(command_sink: WfContext) -> WorkflowResult<()> {
+async fn timer_wf(command_sink: WfContext) -> WorkflowResult<String> {
     command_sink.timer(Duration::from_secs(1)).await;
-    Ok(().into())
+    Ok("Yay!".to_string().into())
 }

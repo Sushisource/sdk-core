@@ -44,8 +44,9 @@ pub enum TimerResult {
     Fired,
 }
 
-// Required even though there are none (yet)
-fp_import! {}
+fp_import! {
+    fn log(message: String);
+}
 
 // Oddly, `()` is not serializable yet. Just use a string for now.
 fp_export! {
