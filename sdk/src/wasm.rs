@@ -4,6 +4,8 @@ use crate::wasm::{
 };
 use std::sync::Arc;
 use std::time::Duration;
+use temporal_workflow_interface::wasm::from_wasm_result;
+use temporal_workflow_interface::WorkflowResult;
 
 pub mod types {
     pub use temporal_wasm_workflow_binding::{
@@ -146,7 +148,17 @@ pub(crate) fn wasm_init(wasm_bytes: &[u8]) -> Result<WasmWorkflow, anyhow::Error
 }
 
 impl WasmWorkflow {
-    pub async fn start(&self) {
+    pub async fn start(&self, input: WasmWfInput) -> WorkflowResult<()> {
+        from_wasm_result(
+            self.runtime
+                .invoke_workflow(input)
+                .await
+                .expect("Invocation works"),
+        )
+        .map(|r| r.map(|_| ()))
+    }
+
+    pub async fn toy_start(&self) {
         info!("Invoking");
         let run_fut = async {
             self.runtime

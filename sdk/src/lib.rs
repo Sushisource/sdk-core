@@ -45,6 +45,7 @@ pub use temporal_workflow_interface::{
     SignalWorkflowOptions, WfContext, WfExitValue, WorkflowResult,
 };
 
+use crate::workflow_future::WorkflowFuture;
 use crate::{
     interceptors::WorkerInterceptor,
     wasm::{wasm_init, WasmWorkflow},
@@ -123,7 +124,7 @@ struct WorkflowHalf {
     workflow_fns: HashMap<String, WorkflowFunction>,
     /// Maps workflow type to the wasm blob for executing workflow runs with that type
     #[cfg(feature = "wasm")]
-    workflow_wasm_blobs: HashMap<String, WasmWorkflow>,
+    workflow_wasm_blobs: HashMap<String, Arc<WasmWorkflow>>,
     /// Handles for each spawned workflow run are inserted here to be cleaned up when all runs
     /// are finished
     join_handles: FuturesUnordered<BoxFuture<'static, Result<WorkflowResult<()>, JoinError>>>,
@@ -191,7 +192,7 @@ impl Worker {
         let ww = wasm_init(wasm_bytes).unwrap();
         self.workflow_half
             .workflow_wasm_blobs
-            .insert(workflow_type.into(), ww);
+            .insert(workflow_type.into(), Arc::new(ww));
     }
 
     /// TODO: Delete me once working with workflow future
@@ -201,7 +202,7 @@ impl Worker {
             .workflow_wasm_blobs
             .get(workflow_type)
             .unwrap();
-        ww.start().await;
+        ww.toy_start().await;
     }
 
     /// Register an Activity function to invoke when the Worker is asked to run an activity of
@@ -323,27 +324,46 @@ impl WorkflowHalf {
         }) = activation.jobs.get(0)
         {
             let workflow_type = &sw.workflow_type;
-            let wf_function = self
-                .workflow_fns
-                .get(workflow_type)
-                .ok_or_else(|| anyhow!("Workflow type {workflow_type} not found"))?;
+            let (jh, activations) = if let Some(wf_func) = self.workflow_fns.get(workflow_type) {
+                // TODO: Consolidate params and branches -- annoying impl Future different thing
+                let (wff, activations) = wf_func.start_workflow(
+                    common.worker.get_config().namespace.clone(),
+                    common.task_queue.clone(),
+                    // TODO: Don't clone args
+                    sw.arguments.clone(),
+                    completions_tx.clone(),
+                );
 
-            // TODO: Look up if in wasm map here, call start on that.
+                let mut shutdown_rx = shutdown_rx.clone();
+                let jh = tokio::spawn(async move {
+                    tokio::select! {
+                        r = wff => r,
+                        _ = shutdown_rx.changed() => Ok(WfExitValue::Evicted)
+                    }
+                });
+                (jh, activations)
+            } else if let Some(wasm) = self.workflow_wasm_blobs.get(workflow_type) {
+                let (wff, activations) = WorkflowFuture::start_wasm_workflow(
+                    common.worker.get_config().namespace.clone(),
+                    common.task_queue.clone(),
+                    // TODO: Don't clone args
+                    sw.arguments.clone(),
+                    completions_tx.clone(),
+                    wasm.clone(),
+                );
 
-            let (wff, activations) = wf_function.start_workflow(
-                common.worker.get_config().namespace.clone(),
-                common.task_queue.clone(),
-                // NOTE: Don't clone args if this gets ported to be a non-test rust worker
-                sw.arguments.clone(),
-                completions_tx.clone(),
-            );
-            let mut shutdown_rx = shutdown_rx.clone();
-            let jh = tokio::spawn(async move {
-                tokio::select! {
-                    r = wff => r,
-                    _ = shutdown_rx.changed() => Ok(WfExitValue::Evicted)
-                }
-            });
+                let mut shutdown_rx = shutdown_rx.clone();
+                let jh = tokio::spawn(async move {
+                    tokio::select! {
+                        r = wff => r,
+                        _ = shutdown_rx.changed() => Ok(WfExitValue::Evicted)
+                    }
+                });
+                (jh, activations)
+            } else {
+                bail!("Workflow type {workflow_type} not found")
+            };
+
             self.workflows
                 .insert(activation.run_id.clone(), activations);
             self.join_handles.push(jh.boxed());

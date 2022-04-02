@@ -48,6 +48,16 @@ impl<T: Debug> WfExitValue<T> {
     pub fn continue_as_new(can: ContinueAsNewWorkflowExecution) -> Self {
         Self::ContinueAsNew(Box::new(can))
     }
+
+    /// Modify a successful result
+    pub fn map<NT: Debug>(self, mapper: impl FnOnce(T) -> NT) -> WfExitValue<NT> {
+        match self {
+            WfExitValue::Normal(v) => WfExitValue::Normal(mapper(v)),
+            WfExitValue::ContinueAsNew(c) => WfExitValue::ContinueAsNew(c),
+            WfExitValue::Cancelled => WfExitValue::Cancelled,
+            WfExitValue::Evicted => WfExitValue::Evicted,
+        }
+    }
 }
 
 #[derive(Debug)]

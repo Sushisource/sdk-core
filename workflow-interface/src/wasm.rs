@@ -39,13 +39,19 @@ impl From<TimerResult> for temporal_wasm_workflow_binding::TimerResult {
     }
 }
 
-pub fn convert_result<T: Debug>(res: WorkflowResult<T>) -> WasmWfResult<T> {
+pub fn to_wasm_result<T: Debug>(res: WorkflowResult<T>) -> WasmWfResult<T> {
     match res {
         Ok(v) => match v {
             WfExitValue::Normal(v) => WasmWfResult::Ok(v),
             _ => unimplemented!(),
         },
         Err(e) => WasmWfResult::Error(e.to_string()),
+    }
+}
+pub fn from_wasm_result<T: Debug>(res: WasmWfResult<T>) -> WorkflowResult<T> {
+    match res {
+        WasmWfResult::Ok(v) => WorkflowResult::Ok(v.into()),
+        WasmWfResult::Error(str) => WorkflowResult::Err(anyhow::Error::msg(str)),
     }
 }
 

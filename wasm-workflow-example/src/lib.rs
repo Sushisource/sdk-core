@@ -4,7 +4,7 @@ use temporal_sdk_core_protos::coresdk::workflow_commands::workflow_command;
 use temporal_wasm_workflow_binding::*;
 use temporal_workflow_interface::{
     cmd_id_from_variant,
-    wasm::{convert_result, encode_wf_cmd},
+    wasm::{encode_wf_cmd, to_wasm_result},
     CommandID, RustWfCmd, Unblocker, WfContext, WorkflowResult,
 };
 use tokio::sync::watch;
@@ -38,7 +38,7 @@ async fn invoke_workflow(input: WasmWfInput) -> WasmWfResult<String> {
     });
 
     let wf_fut = timer_wf(new_ctx);
-    convert_result(wf_fut.await)
+    to_wasm_result(wf_fut.await)
 }
 
 #[fp_export_impl(temporal_wasm_workflow_binding)]

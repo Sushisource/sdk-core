@@ -33,6 +33,7 @@ use temporal_sdk_core_protos::{
     temporal::api::failure::v1::Failure,
     utilities::TryIntoOrNone,
 };
+use temporal_wasm_workflow_binding::WasmWfInput;
 use temporal_workflow_interface::{
     cmd_id_from_variant, CancellableID, CommandCreateRequest, CommandID, RustWfCmd, SignalData,
     TimerResult, UnblockEvent, Unblocker, WfContext, WfContextSharedData, WfExitValue,
@@ -104,7 +105,7 @@ struct NativeWfDriver {
     outgoing_commands: Receiver<RustWfCmd>,
 }
 struct WasmWfDriver {
-    wf: WasmWorkflow,
+    wf: Arc<WasmWorkflow>,
 }
 
 impl WfContextDriver {
@@ -165,6 +166,50 @@ pub struct WorkflowFuture {
 }
 
 impl WorkflowFuture {
+    pub(crate) fn start_wasm_workflow(
+        namespace: String,
+        task_queue: String,
+        args: Vec<Payload>,
+        outgoing_completions: UnboundedSender<WorkflowActivationCompletion>,
+        wasm_workflow: Arc<WasmWorkflow>,
+    ) -> (
+        impl Future<Output = WorkflowResult<()>>,
+        UnboundedSender<WorkflowActivation>,
+    ) {
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        // TODO: Deal with cancels and shared context -- this context is useless and just letting
+        //   me construct unused shared data.
+        let (wf_context, _cmd_receiver) =
+            WfContext::new(namespace.clone(), task_queue.clone(), args, cancel_rx);
+        let driver = WfContextDriver::Wasm(WasmWfDriver {
+            wf: wasm_workflow.clone(),
+        });
+        let (tx, incoming_activations) = unbounded_channel();
+        (
+            WorkflowFuture {
+                ctx_shared: wf_context.get_shared_data(),
+                inner: tokio::task::unconstrained(async move {
+                    wasm_workflow
+                        .start(WasmWfInput {
+                            namespace,
+                            task_queue,
+                            is_cancelled: false,
+                        })
+                        .await
+                })
+                .boxed(),
+                driver,
+                outgoing_completions,
+                incoming_activations,
+                command_status: Default::default(),
+                cancel_sender: cancel_tx,
+                child_workflow_starts: Default::default(),
+                sig_chans: Default::default(),
+            },
+            tx,
+        )
+    }
+
     fn unblock(&mut self, event: UnblockEvent) -> Result<(), Error> {
         let cmd_id = match event {
             UnblockEvent::Timer(seq, _) => CommandID::Timer(seq),
@@ -429,7 +474,7 @@ impl Future for WorkflowFuture {
                         self.command_status.insert(
                             command_id,
                             WFCommandFutInfo {
-                                unblocker: cmd.unblocker.into(),
+                                unblocker: cmd.unblocker,
                             },
                         );
                     }
